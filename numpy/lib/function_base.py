@@ -1954,7 +1954,11 @@ def corrcoef(x, y=None, rowvar=1, bias=0, ddof=None):
     except ValueError:  # scalar covariance
         # nan if incorrect value (nan, inf, 0), 1 otherwise
         return c / c
-    return c / sqrt(multiply.outer(d, d))
+    d = sqrt(d)
+    # calculate "c / multiply.outer(d, d)" row-wise ... for memory and speed
+    for i in range(0, d.size):
+        c[i,:] /= (d * d[i])
+    return c
 
 
 def blackman(M):

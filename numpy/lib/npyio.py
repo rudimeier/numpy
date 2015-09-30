@@ -987,6 +987,8 @@ def savetxt(fname, X, fmt='%.18e', delimiter=' ', newline='\n', header='',
     try:
         X = np.asarray(X)
 
+        dtype_dim = 1
+
         # Handle 1-dimensional arrays
         if X.ndim == 1:
             # Common case -- 1d array of numbers
@@ -996,9 +998,12 @@ def savetxt(fname, X, fmt='%.18e', delimiter=' ', newline='\n', header='',
 
             # Complex dtype -- each field indicates a separate column
             else:
-                ncol = len(X.dtype.descr)
+                dtype_dim = len(X.dtype.descr)
+                ncol = dtype_dim
         else:
             ncol = X.shape[1]
+
+        nrow = X.shape[0]
 
         iscomplex_X = np.iscomplexobj(X)
         # `fmt` can be a string with multiple insertion points or a
@@ -1026,10 +1031,31 @@ def savetxt(fname, X, fmt='%.18e', delimiter=' ', newline='\n', header='',
         if len(header) > 0:
             header = header.replace('\n', '\n' + comments)
             fh.write(asbytes(comments + header + newline))
-        for row in X:
-            if iscomplex_X:
-                row = np.vstack((row.real,row.imag)).T.reshape([-1])
-            fh.write(asbytes(format % tuple(row) + newline))
+
+        # If rows are short we want to format/write up to maxel elemnts at once.
+        maxel = 4000
+        chunk_rows = max(1, maxel // ncol)
+        left_rows = nrow % chunk_rows
+
+        # helper to write several rows at once
+        def write_rows(rows, xformat):
+            if dtype_dim <= 1:
+                rows = rows.reshape([-1])
+                if iscomplex_X:
+                    rows = np.vstack((rows.real,rows.imag)).T.reshape([-1])
+            else:
+                rows = [i for sub in rows for i in sub]
+            fh.write(asbytes(xformat % tuple(rows)))
+
+        # write all possible chunks of rows ... if any
+        if left_rows < nrow:
+            xformat = newline.join([format] * chunk_rows) + newline
+            for i in xrange(0, nrow - left_rows, chunk_rows):
+                write_rows(X[i:i+chunk_rows,], xformat)
+        # write the rest rows
+        if left_rows > 0:
+            xformat = newline.join([format] * left_rows) + newline
+            write_rows(X[-left_rows:,], xformat)
         if len(footer) > 0:
             footer = footer.replace('\n', '\n' + comments)
             fh.write(asbytes(comments + footer + newline))
